@@ -1,0 +1,345 @@
+cd Desktop
+npx create-react-app Hamster_king_Beta_bot
+@telegram-apps/sdk
+index.JS
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import App from './App';
+import { initMiniApp, mockTelegramEnv, parseInitData } from '@telegram-apps/sdk';
+
+const initializeTelegramSDK = async () => {
+  try {
+    // Попытка инициализировать настоящее окружение Telegram
+    console.log("Инициализация окружения Telegram");
+    const [miniApp] = initMiniApp();
+    await miniApp.ready();
+  } catch (error) {
+    // В случае ошибки инициализируем фейковое окружение
+    console.error('Ошибка при инициализации Telegram:', error);
+
+    const initDataRaw = new URLSearchParams([
+      ['user', JSON.stringify({
+        id: 99281932,
+        first_name: 'Andrew',
+        last_name: 'Rogue',
+        username: 'rogue',
+        language_code: 'en',
+        is_premium: true,
+        allows_write_to_pm: true,
+      })],
+      ['hash', '89d6079ad6762351f38c6dbbc41bb53048019256a9443988af7a48bcad16ba31'],
+      ['auth_date', '1716922846'],
+      ['start_param', 'debug'],
+      ['chat_type', 'sender'],
+      ['chat_instance', '8428209589180549439'],
+    ]).toString();
+
+    mockTelegramEnv({
+      themeParams: {
+        accentTextColor: '#6ab2f2',
+        bgColor: '#17212b',
+        buttonColor: '#5288c1',
+        buttonTextColor: '#ffffff',
+        destructiveTextColor: '#ec3942',
+        headerBgColor: '#fcb69f',
+        hintColor: '#708499',
+        linkColor: '#6ab3f3',
+        secondaryBgColor: '#232e3c',
+        sectionBgColor: '#17212b',
+        sectionHeaderTextColor: '#6ab3f3',
+        subtitleTextColor: '#708499',
+        textColor: '#f5f5f5',
+      },
+      initData: parseInitData(initDataRaw),
+      initDataRaw,
+      version: '7.2',
+      platform: 'tdesktop',
+    });
+
+    console.log('Mock Telegram environment initialized');
+  }
+};
+
+// Инициализация SDK
+initializeTelegramSDK();
+
+const container = document.getElementById('root');
+const root = createRoot(container);
+
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+import React, { useReducer, useEffect } from 'react';
+import './App.css';
+
+const generateDeck = () => {
+  const colors = ['#FF6347', '#4682B4', '#32CD32', '#FFD700', '#FF69B4', '#8A2BE2'];
+  const deck = [];
+  // Каждому цвету добавляем две карточки
+  for (let color of colors) {
+    deck.push({ color, matched: false });
+    deck.push({ color, matched: false });
+  }
+  // Перемешиваем колоду
+  return deck.sort(() => Math.random() - 0.5);
+};
+
+const initialState = {
+  deck: generateDeck(),
+  flipped: [],
+  matched: [],
+  turns: 0,
+  score: 0,
+  pendingReset: false,
+  gameOver: false,
+};
+
+const gameReducer = (state, action) => {
+  switch (action.type) {
+    case 'FLIP_CARD':
+      // Переворачиваем карточку
+      if (state.flipped.length < 2 && !state.flipped.includes(action.index) && !state.matched.includes(state.deck[action.index].color)) {
+        return { ...state, flipped: [...state.flipped, action.index] };
+      }
+      return state;
+    case 'CHECK_MATCH':
+      // Проверяем совпадение перевернутых карточек
+      const [first, second] = state.flipped;
+      if (state.deck[first].color === state.deck[second].color) {
+        const newMatched = [...state.matched, state.deck[first].color];
+        const isGameOver = newMatched.length === state.deck.length / 2;
+        return {
+          ...state,
+          matched: newMatched,
+          score: isGameOver ? state.score + 1 : state.score,
+          flipped: [],
+          pendingReset: false,
+          gameOver: isGameOver,
+        };
+      } else {
+        return { ...state, pendingReset: true };
+      }
+    case 'RESET_FLIPPED':
+      // Сбрасываем перевернутые карточки
+      return { ...state, flipped: [], pendingReset: false };
+    case 'INCREMENT_TURN':
+      // Увеличиваем счетчик попыток
+      return { ...state, turns: state.turns + 1 };
+    case 'RESET_GAME':
+      // Сбрасываем состояние игры
+      return {
+        ...initialState,
+        deck: generateDeck(),
+      };
+    default:
+      return state;
+  }
+};
+
+const App = () => {
+  const [state, dispatch] = useReducer(gameReducer, initialState);
+
+  // Проверка на совпадение перевернутых карточек
+  useEffect(() => {
+    if (state.flipped.length === 2) {
+      dispatch({ type: 'CHECK_MATCH' });
+      dispatch({ type: 'INCREMENT_TURN' });
+    }
+  }, [state.flipped]);
+
+  // Таймер для сброса перевернутых карточек
+  useEffect(() => {
+    if (state.pendingReset) {
+      const timer = setTimeout(() => {
+        dispatch({ type: 'RESET_FLIPPED' });
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [state.pendingReset]);
+
+  // Обработка клика на карточку
+  const handleCardClick = (index) => {
+    if (!state.gameOver && state.flipped.length < 2 && !state.flipped.includes(index)) {
+      dispatch({ type: 'FLIP_CARD', index });
+    }
+  };
+
+  const handlePlayAgain = () => {
+    dispatch({ type: 'RESET_GAME' });
+  };
+
+  return (
+    <div className="App">
+      <h1>Memory Game</h1>
+      <div className="info">
+        <p>Очки: {state.score}</p>
+        <p>Попытки: {state.turns}/15</p>
+      </div>
+      <div className="deck">
+        {state.deck.map((card, index) => (
+          <div
+            key={index}
+            className={`card ${state.flipped.includes(index) || state.matched.includes(card.color) ? 'flipped show' : ''}`}
+            style={{ '--card-color': card.color }}
+            onClick={() => handleCardClick(index)}
+          />
+        ))}
+      </div>
+      {state.gameOver && (
+        <>
+          <div className="overlay" />
+          <div className="game-over">
+            <h2>Вы выиграли!</h2>
+            <button onClick={handlePlayAgain}>Заново</button>
+          </div>
+        </>
+      )}
+      {!state.gameOver && state.turns >= 15 && (
+        <>
+          <div className="overlay" />
+          <div className="game-over">
+            <h2>Игра окончена!</h2>
+            <button onClick={handlePlayAgain}>Заново</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+export default App;
+
+body {
+  font-family: 'Arial', sans-serif;
+  background-color: #f0f0f0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(to right, #ffecd2 0%, #fcb69f 100%);
+}
+
+.App {
+  text-align: center;
+  position: relative;
+}
+
+h1 {
+  font-size: 2.5rem;
+  margin-bottom: 5px;
+  color: #333;
+}
+
+.deck {
+  display: grid;
+  grid-template-columns: repeat(3, 100px);
+  grid-gap: 10px;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.card {
+  width: 100px;
+  height: 100px;
+  background-color: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: transform 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.card.flipped {
+  transform: rotateY(180deg);
+}
+
+.card.show {
+  background-color: var(--card-color);
+}
+
+.info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 20px;
+  font-size: 1.2rem;
+}
+
+.game-over {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  z-index: 2;
+}
+
+.game-over h2 {
+  margin: 0 0 10px 0;
+}
+
+.game-over button {
+  background-color: #ff6347;
+  color: #fff;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.game-over button:hover {
+  background-color: #ff4500;
+}
+
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1;
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script>
+    Telegram.WebApp.expand();
+</script>
+miniApp.setHeaderColor('#fcb69f');
+import { initMiniApp, initMainButton, mockTelegramEnv, parseInitData, initUtils } from '@telegram-apps/sdk';
+// Инициализация главной кнопки
+    const [mainButton] = initMainButton();
+    mainButton.setParams({
+      backgroundColor: '#aa1388',
+      text: 'Поделиться очками',
+      isVisible: true,
+      isEnabled: true,
+    });
+    mainButton.show();
+
+    const utils = initUtils();
+
+    // Установка обработчика нажатия на главную кнопку
+    mainButton.on('click', () => {
+      try {
+        // Получение текущих очков из localStorage
+        const score = localStorage.getItem('memory-game-score') || 0;
+        utils.shareURL(`Посмотрите! У меня ${score} очков в игре!`);
+        console.log('Окно выбора чата открыто для отправки сообщения.');
+      } catch (error) {
+        console.error('Ошибка при открытии окна выбора чата:', error);
+      }
+    });
+    git init
+    git add . 
+    git commit -m "first commit"
+    git branch -M main
+    git remote add origin https://github.com/Tulopex/Hamster_king_Beta_bot
+    git push -u origin main
